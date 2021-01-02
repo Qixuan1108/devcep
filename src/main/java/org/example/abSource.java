@@ -17,7 +17,7 @@ public class abSource extends RichSourceFunction<String> {
         int randomNum;
         long timeStamp = System.currentTimeMillis();
         System.out.println("source begin to create event" + timeStamp);
-        while(EventId < 5000){
+        while(EventId < 2000){
             randomNum = (int)(Math.random() * 100);
             if(randomNum > 0 && randomNum <= 50){
                 map.put("eventType", "A");

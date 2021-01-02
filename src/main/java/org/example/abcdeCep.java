@@ -17,76 +17,78 @@ import org.apache.flink.cep.PatternStream;
 import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.util.OutputTag;
 
-import org.apache.flink.shaded.curator.org.apache.curator.shaded.com.google.common.collect.Lists;
-
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
-import at.datasciencelabs.pattern.*;
 
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
-
-public class abCep {
-
+public class abcdeCep {
     public static void main(String[] args)throws Exception{
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
         env.setParallelism(1);
 
-        DataStream<Tuple2<String,String>> MyDataStream = env.addSource(new abSource()).map(new MapFunction<String, Tuple2<String, String>>() {
+        DataStream<Tuple2<String, String>> MyDataStream = env.addSource(new abSource()).map(new MapFunction<String, Tuple2<String, String>>() {
             @Override
             public Tuple2<String, String> map(String s) throws Exception {
                 JSONObject json = JSON.parseObject(s);
                 return new Tuple2<>(json.getString("eventType"), json.getString("timeStamp"));
             }
         });
-
-        Pattern<Tuple2<String,String>,Tuple2<String,String>> MyPattern = Pattern.<Tuple2<String,String>>begin("start").where(
+        Pattern<Tuple2<String, String>, Tuple2<String, String>> MyPattern = Pattern.
+                begin(Pattern.<Tuple2<String, String>>begin("startInner").where(
                 new IterativeCondition<Tuple2<String, String>>() {
                     @Override
                     public boolean filter(Tuple2<String, String> value, Context<Tuple2<String, String>> context) throws Exception {
                         return value.f0.equals("A");
                     }
                 }
-        ).within(Time.seconds(4)).followedBy("next").where(new IterativeCondition<Tuple2<String, String>>() {
+        ).next("endInner").where(
+                new IterativeCondition<Tuple2<String, String>>() {
+                    @Override
+                    public boolean filter(Tuple2<String, String> value, Context<Tuple2<String, String>> context) throws Exception {
+                        return value.f0.equals("B");
+                    }
+                }
+        )).followedBy("next").where(new IterativeCondition<Tuple2<String, String>>() {
             @Override
             public boolean filter(Tuple2<String, String> value, Context<Tuple2<String, String>> cxt) throws Exception {
-                Iterable<Tuple2<String, String>> eventIterable = cxt.getEventsForPattern("start");
-                String n = "start";
-                //List<Tuple2<String, String>> eventList = Lists.newArrayList(cxt.getEventsForPattern("start"));
+
+                Iterable<Tuple2<String, String>> eventIterable = cxt.getEventsForPattern("endInner");
                 Iterator<Tuple2<String, String>> eventIterator = eventIterable.iterator();
                 long last = 0;
                 int i = 1;
-                while(eventIterator.hasNext()){
+                while (eventIterator.hasNext()) {
                     Tuple2<String, String> lastEvent = eventIterator.next();
                     //System.out.println("lastEvent is:" + lastEvent + "num i is:" + i);
                     last = Long.parseLong(lastEvent.f1);
                     i++;
 
                 }
-                if(last != 0){
+                if (last != 0) {
                     long now = Long.parseLong(value.f1);
                     long count = now - last;
                     //System.out.println("nowEvent is:" + value);
                     //System.out.println("count is:" + count);
-                    return value.f0.equals("B") && count < 2000;
+                    return value.f0.equals("A") && count < 3000;
 
                 }
-
-                return false;
+                 return false;
             }
         }).followedBy("end").where(new SimpleCondition<Tuple2<String, String>>() {
             @Override
             public boolean filter(Tuple2<String, String> value) throws Exception {
+                //return true;
                 return value.f0.equals("C");
             }
-        }).within(Time.seconds(6));
+        }).within(Time.seconds(12));
 
         PatternStream<Tuple2<String, String>> pattern = CEP.pattern(MyDataStream, MyPattern);
 
-        OutputTag<String> outputTag = new OutputTag<String>("myOutput"){};
+        OutputTag<String> outputTag = new OutputTag<String>("myOutput") {
+        };
 
         SingleOutputStreamOperator<String> resultStream = pattern.select(outputTag,
                 new PatternTimeoutFunction<Tuple2<String, String>, String>() {
@@ -114,7 +116,7 @@ public class abCep {
         DataStream<String> sideOutput = resultStream.getSideOutput(outputTag);
         sideOutput.print();
 
-        env.execute("My Test abCEP");
 
+        env.execute("My Test abCEP");
     }
 }
